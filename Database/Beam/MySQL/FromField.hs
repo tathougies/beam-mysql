@@ -2,26 +2,40 @@
 --   MySQL fields. The ones in 'mysql-simple' are inadequate because they rely on
 --   bizarre asynchronous exceptions that cannot be used consistently
 
-module Database.Beam.MySQL.FromField where
+{-# LANGUAGE BangPatterns #-}
+
+module Database.Beam.MySQL.FromField
+    ( FieldParser
+    , ParseError(..)
+    , ParseErrorType(..)
+    , FromField(..)
+
+    , atto ) where
 
 import           Database.MySQL.Base
 import           Database.MySQL.Base.Types
 
+import           Control.Applicative
 import           Control.Exception
 import           Control.Monad.Except
 
 import           Data.Attoparsec.ByteString.Char8
 import qualified Data.ByteString.Char8 as SB
 import qualified Data.ByteString.Lazy.Char8 as LB
+import           Data.Char
+import           Data.Fixed
 import           Data.Int
 import           Data.Proxy
 import           Data.Ratio
 import           Data.Scientific
 import qualified Data.Text as TS
-import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Lazy as TL
+import           Data.Time
 import           Data.Typeable
 import           Data.Word
+
+import           Text.Printf
 
 type FieldParser a = ExceptT ParseError IO a
 
@@ -98,7 +112,7 @@ instance FromField a => FromField (Maybe a) where
     fromField field (Just d) = Just <$> fromField field (Just d)
 
 instance FromField SB.ByteString where
-    fromField = doConvert checkText pure
+    fromField = doConvert checkBytes pure
 
 instance FromField LB.ByteString where
     fromField f d = fmap (LB.fromChunks . pure) (fromField f d)
@@ -108,6 +122,106 @@ instance FromField TS.Text where
 
 instance FromField TL.Text where
     fromField f d = fmap (TL.fromChunks . pure) (fromField f d)
+
+instance FromField LocalTime where
+    fromField = atto checkDate localTime
+      where
+        checkDate DateTime = True
+        checkDate Timestamp = True
+        checkDate Date = True
+        checkDate _ = False
+
+        localTime = do
+          (day, time) <- dayAndTime
+          pure (LocalTime day time)
+
+instance FromField Day where
+    fromField = atto checkDay dayP
+      where
+        checkDay Date = True
+        checkDay _    = False
+
+instance FromField TimeOfDay where
+    fromField = atto checkTime timeP
+      where
+        checkTime Time = True
+        checkTime _ = False
+
+instance FromField NominalDiffTime where
+    fromField = atto checkTime durationP
+      where
+        checkTime Time = True
+        checkTime _ = False
+
+dayAndTime :: Parser (Day, TimeOfDay)
+dayAndTime = do
+  day <- dayP
+  _ <- char ' '
+  time <- timeP
+
+  pure (day, time)
+
+timeP :: Parser TimeOfDay
+timeP = do
+  hour <- lengthedDecimal 2
+  _ <- char ':'
+  minute <- lengthedDecimal 2
+  _ <- char ':'
+  seconds <- lengthedDecimal 2
+  microseconds <- (char '.' *> maxLengthedDecimal 6) <|>
+                  pure 0
+
+  let pico = seconds + microseconds * 1e-6
+  case makeTimeOfDayValid hour minute pico of
+    Nothing -> fail (printf "Invalid time part: %02d:%02d:%s" hour minute (showFixed False pico))
+    Just tod -> pure tod
+
+durationP :: Parser NominalDiffTime
+durationP = do
+  negative <- (True <$ char '-') <|> pure False
+  hour <- lengthedDecimal 3
+  _ <- char ':'
+  minute <- lengthedDecimal 2
+  _ <- char ':'
+  seconds <- lengthedDecimal 2
+  microseconds <- (char '.' *> maxLengthedDecimal 6) <|>
+                  pure 0
+
+  let v = hour * 3600 + minute * 60 + seconds +
+          microseconds * 1e-6
+
+  pure (if negative then negate v else v)
+
+dayP :: Parser Day
+dayP = do
+  year <- lengthedDecimal 4
+  _ <- char '-'
+  month <- lengthedDecimal 2
+  _ <- char '-'
+  day <- lengthedDecimal 2
+
+  case fromGregorianValid year month day of
+    Nothing -> fail (printf "Invalid date part: %04d-%02d-%02d" year month day)
+    Just day' -> pure day'
+
+lengthedDecimal :: Num a => Int -> Parser a
+lengthedDecimal = lengthedDecimal' 0
+  where
+    lengthedDecimal' !a 0 = pure a
+    lengthedDecimal' !a n = do
+      d <- digitToInt <$> digit
+      lengthedDecimal' (a * 10 + fromIntegral d) (n - 1)
+
+maxLengthedDecimal :: Num a => Int -> Parser a
+maxLengthedDecimal = go1 0
+  where
+    go1 a n = do
+      d <- digitToInt <$> digit
+      go' (a * 10 + fromIntegral d) (n - 1)
+
+    go' !a 0 = pure a
+    go' !a n =
+      go1 a n <|> pure (a * 10  ^ n)
 
 incompatibleTypes, unexpectedNull, conversionFailed
     :: forall a. Typeable a => Field -> String -> FieldParser a

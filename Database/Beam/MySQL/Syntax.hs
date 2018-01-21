@@ -6,9 +6,11 @@ import           Database.Beam.Query.Types
 
 import           Database.MySQL.Base (Connection)
 
+import           Data.String
 import           Data.ByteString (ByteString)
 import           Data.ByteString.Builder
 import           Data.ByteString.Builder.Scientific (scientificBuilder)
+import           Data.Fixed
 import           Data.Int
 import           Data.Monoid ((<>))
 import           Data.Scientific (Scientific)
@@ -16,6 +18,7 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Lazy as TL
+import           Data.Time
 import           Data.Word
 
 newtype MysqlSyntax
@@ -337,7 +340,7 @@ mysqlUnOp op e = MysqlExpressionSyntax (emit op <> emit " (" <>
 
 mysqlPostFix :: Builder -> MysqlExpressionSyntax -> MysqlExpressionSyntax
 mysqlPostFix op e = MysqlExpressionSyntax (emit "(" <> fromMysqlExpression e <>
-                                           emit ")" <> emit op)
+                                           emit ") " <> emit op)
 
 mysqlCompOp :: Builder -> Maybe MysqlComparisonQuantifierSyntax
             -> MysqlExpressionSyntax -> MysqlExpressionSyntax
@@ -347,14 +350,14 @@ mysqlCompOp op quantifier a b =
     emit "(" <> fromMysqlExpression a <>
     emit ") " <> emit op <>
     maybe mempty (\q -> emit " " <> fromMysqlComparisonQuantifier q <> emit " ") quantifier <>
-    emit "(" <> fromMysqlExpression b <> emit ")"
+    emit " (" <> fromMysqlExpression b <> emit ")"
 
 mysqlBinOp :: Builder -> MysqlExpressionSyntax
            -> MysqlExpressionSyntax -> MysqlExpressionSyntax
 mysqlBinOp op a b =
     MysqlExpressionSyntax $
-    emit "(" <> fromMysqlExpression a <> emit ")" <> emit op <>
-    emit "(" <> fromMysqlExpression b <> emit ")"
+    emit "(" <> fromMysqlExpression a <> emit ") " <> emit op <>
+    emit " (" <> fromMysqlExpression b <> emit ")"
 
 instance IsSqlExpressionSyntaxStringType MysqlExpressionSyntax String
 instance IsSqlExpressionSyntaxStringType MysqlExpressionSyntax Text
@@ -440,3 +443,49 @@ instance HasSqlValueSyntax MysqlValueSyntax [Char] where
 
 instance HasSqlValueSyntax MysqlValueSyntax Scientific where
     sqlValueSyntax = MysqlValueSyntax . emit . scientificBuilder
+
+instance HasSqlValueSyntax MysqlValueSyntax Day where
+    sqlValueSyntax d = MysqlValueSyntax (emit ("'" <> dayBuilder d <> "'"))
+
+instance HasSqlValueSyntax MysqlValueSyntax TimeOfDay where
+    sqlValueSyntax d = MysqlValueSyntax (emit ("'" <> todBuilder d <> "'"))
+
+dayBuilder :: Day -> Builder
+dayBuilder d =
+    integerDec year <> "-" <>
+    (if month < 10 then "0" else mempty) <> intDec month <> "-" <>
+    (if day   < 10 then "0" else mempty) <> intDec day
+  where
+    (year, month, day) = toGregorian d
+
+todBuilder :: TimeOfDay -> Builder
+todBuilder d =
+    (if todHour d < 10 then "0" else mempty) <> intDec (todHour d) <> ":" <>
+    (if todMin  d < 10 then "0" else mempty) <> intDec (todMin  d) <> ":" <>
+    (if secs6 < 10 then "0" else mempty) <> fromString (showFixed False secs6)
+  where
+    secs6 :: Fixed E6
+    secs6 = fromRational (toRational (todSec d))
+
+instance HasSqlValueSyntax MysqlValueSyntax NominalDiffTime where
+    sqlValueSyntax d =
+        let dWhole = abs (floor d) :: Int
+            hours   = dWhole `div` 3600 :: Int
+
+            d' = dWhole - (hours * 3600)
+            minutes = d' `div` 60
+
+            seconds = abs d - fromIntegral ((hours * 3600) + (minutes * 60))
+
+            secondsFixed :: Fixed E12
+            secondsFixed = fromRational (toRational seconds)
+        in
+          MysqlValueSyntax $
+          emit ((if d < 0 then "-" else mempty) <>
+                (if hours < 10 then "0" else mempty) <> intDec hours <> ":" <>
+                (if minutes < 10 then "0" else mempty) <> intDec minutes <> ":" <>
+                (if secondsFixed < 10 then "0" else mempty) <> fromString (showFixed False secondsFixed))
+
+instance HasSqlValueSyntax MysqlValueSyntax LocalTime where
+    sqlValueSyntax d = MysqlValueSyntax (emit ("'" <> dayBuilder (localDay d) <>
+                                               " " <> todBuilder (localTimeOfDay d) <> "'"))
