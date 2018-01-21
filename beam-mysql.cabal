@@ -1,0 +1,46 @@
+name:                 beam-mysql
+version:              0.1.0.0
+synopsis:             Connection layer between beam and MySQL/MariaDB
+description:
+homepage:             http://travis.athougies.net/projects/beam.html
+license:              MIT
+license-file:         LICENSE
+author:               Travis Athougies
+maintainer:           travis@athougies.net
+category:             Database
+build-type:           Simple
+cabal-version:        >=1.18
+bug-reports:          https://github.com/tathougies/issues
+
+library
+  exposed-modules:    Database.Beam.MySQL
+                      Database.Beam.MySQL.Connection
+                      Database.Beam.MySQL.Syntax
+                      Database.Beam.MySQL.FromField
+  build-depends:      base                 >=4.7  && <5.0,
+                      beam-core            ==0.6.0.0,
+
+                      mysql                >=0.1  && <0.2,
+
+                      text                 >=1.0  && <1.3,
+                      bytestring           >=0.10 && <0.11,
+
+                      attoparsec,
+
+                      hashable             >=1.1  && <1.3,
+                      time                 >=1.6  && <1.10,
+                      mtl                  >=2.1  && <2.3,
+                      case-insensitive     >=1.2  && <1.3,
+                      scientific           >=0.3  && <0.4,
+                      free                 >=4.12 && <4.14,
+                      network-uri
+  default-language:   Haskell2010
+  default-extensions: ScopedTypeVariables, OverloadedStrings, MultiParamTypeClasses, RankNTypes, FlexibleInstances,
+                      DeriveDataTypeable, DeriveGeneric, StandaloneDeriving, TypeFamilies, GADTs, OverloadedStrings,
+                      CPP, TypeApplications, FlexibleContexts
+  ghc-options:        -O2 -Wall -Werror
+
+source-repository head
+  type: git
+  location: https://github.com/tathougies/beam.git
+  subdir: beam-mysql

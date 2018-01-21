@@ -1,0 +1,4 @@
+#resolver: lts-9.0
+resolver: lts-10.3
+extra-deps:
+  - beam-core-0.6.0.0
