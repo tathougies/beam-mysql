@@ -31,7 +31,8 @@ print_open_statement() {
     echo "chinook <- connect defaultConnectInfo {"
     echo "              connectHost = \"$HOST\", connectPort = $PORT,"
     echo "              connectUser = \"$USER\", connectPassword = \"$PASSWORD\","
-    echo "              connectDatabase = \"$DATABASE\" }"
+    echo "              connectDatabase = \"$DATABASE\","
+    echo "              connectOptions = [ Base.CharsetName \"utf8\", Base.Protocol Base.TCP ] }"
     echo "autocommit chinook False -- Do not auto commit DDL statements"
 }
 
