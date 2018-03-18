@@ -334,6 +334,10 @@ instance IsSql92ExpressionSyntax MysqlExpressionSyntax where
                emit "(" <> fromMysqlExpression e <> emit ") IN ( " <>
                mysqlSepBy (emit ", ") (map fromMysqlExpression es) <> emit ")"
 
+    trimE x = MysqlExpressionSyntax (emit "TRIM(" <> fromMysqlExpression x <> emit ")")
+    lowerE x = MysqlExpressionSyntax (emit "LOWER(" <> fromMysqlExpression x <> emit ")")
+    upperE x = MysqlExpressionSyntax (emit "UPPER(" <> fromMysqlExpression x <> emit ")")
+
 mysqlUnOp :: Builder -> MysqlExpressionSyntax -> MysqlExpressionSyntax
 mysqlUnOp op e = MysqlExpressionSyntax (emit op <> emit " (" <>
                                         fromMysqlExpression e <> emit ")")

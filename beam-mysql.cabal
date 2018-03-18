@@ -18,7 +18,7 @@ library
                       Database.Beam.MySQL.Syntax
                       Database.Beam.MySQL.FromField
   build-depends:      base                 >=4.7  && <5.0,
-                      beam-core            ==0.6.0.0,
+                      beam-core            >=0.7  && <0.8,
 
                       mysql                >=0.1  && <0.2,
 
@@ -38,9 +38,15 @@ library
   default-extensions: ScopedTypeVariables, OverloadedStrings, MultiParamTypeClasses, RankNTypes, FlexibleInstances,
                       DeriveDataTypeable, DeriveGeneric, StandaloneDeriving, TypeFamilies, GADTs, OverloadedStrings,
                       CPP, TypeApplications, FlexibleContexts
-  ghc-options:        -O2 -Wall -Werror
+  ghc-options:        -Wall
+  if flag(werror)
+    ghc-options:       -Werror
+
+flag werror
+  description: Enable -Werror during development
+  default:     False
+  manual:      True
 
 source-repository head
   type: git
-  location: https://github.com/tathougies/beam.git
-  subdir: beam-mysql
+  location: https://github.com/tathougies/beam-mysql.git
