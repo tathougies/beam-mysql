@@ -3,6 +3,12 @@
 
 module Database.Beam.MySQL.Connection
     ( MySQL(..), MySQL.Connection
+    , MySQLM(..)
+
+    , MysqlCommandSyntax(..)
+    , MysqlSelectSyntax(..), MysqlInsertSyntax(..)
+    , MysqlUpdateSyntax(..), MysqlDeleteSyntax(..)
+    , MysqlExpressionSyntax(..)
 
     , MySQL.connect, MySQL.close
 

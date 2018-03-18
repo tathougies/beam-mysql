@@ -11,8 +11,6 @@ USER=$3
 PASSWORD=$4
 DATABASE=$5
 
-status "MYSQL HOST=${HOST} PORT=${PORT} USER=${USER}"
-
 run_mysql () {
     if [[ ! -z $PASSWORD ]]; then
         PASSWORD_ARG="--password $PASSWORD"
