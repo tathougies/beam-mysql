@@ -1,8 +1,10 @@
+{-# LANGUAGE CPP #-}
+
 module Database.Beam.MySQL.Syntax where
 
 import           Database.Beam.Backend.SQL
+import           Database.Beam.Query
 import           Database.Beam.Query.SQL92
-import           Database.Beam.Query.Types
 
 import           Database.MySQL.Base (Connection)
 
@@ -319,13 +321,13 @@ instance IsSql92ExpressionSyntax MysqlExpressionSyntax where
                                                  emit " FROM (" <> fromMysqlExpression from <> emit ")")
     castE e to = MysqlExpressionSyntax (emit "CAST(" <> fromMysqlExpression e <> emit ") AS " <>
                                         fromMysqlDataType to <> emit ")")
-    caseE cases else_ =
+    caseE cases else' =
         MysqlExpressionSyntax $
         emit "CASE " <>
         foldMap (\(cond, res) -> emit "WHEN " <> fromMysqlExpression cond <>
                                  emit " THEN " <> fromMysqlExpression res <>
                                  emit " ") cases <>
-        emit "ELSE " <> fromMysqlExpression else_ <> emit " END"
+        emit "ELSE " <> fromMysqlExpression else' <> emit " END"
 
     currentTimestampE = MysqlExpressionSyntax (emit "CURRENT_TIMESTAMP")
     defaultE = MysqlExpressionSyntax (emit "DEFAULT")
@@ -493,3 +495,31 @@ instance HasSqlValueSyntax MysqlValueSyntax NominalDiffTime where
 instance HasSqlValueSyntax MysqlValueSyntax LocalTime where
     sqlValueSyntax d = MysqlValueSyntax (emit ("'" <> dayBuilder (localDay d) <>
                                                " " <> todBuilder (localTimeOfDay d) <> "'"))
+
+-- * Equality checks
+#define HAS_MYSQL_EQUALITY_CHECK(ty)                       \
+  instance HasSqlEqualityCheck MysqlExpressionSyntax (ty); \
+  instance HasSqlQuantifiedEqualityCheck MysqlExpressionSyntax (ty);
+
+HAS_MYSQL_EQUALITY_CHECK(Bool)
+HAS_MYSQL_EQUALITY_CHECK(Double)
+HAS_MYSQL_EQUALITY_CHECK(Float)
+HAS_MYSQL_EQUALITY_CHECK(Int)
+HAS_MYSQL_EQUALITY_CHECK(Int8)
+HAS_MYSQL_EQUALITY_CHECK(Int16)
+HAS_MYSQL_EQUALITY_CHECK(Int32)
+HAS_MYSQL_EQUALITY_CHECK(Int64)
+HAS_MYSQL_EQUALITY_CHECK(Integer)
+HAS_MYSQL_EQUALITY_CHECK(Word)
+HAS_MYSQL_EQUALITY_CHECK(Word8)
+HAS_MYSQL_EQUALITY_CHECK(Word16)
+HAS_MYSQL_EQUALITY_CHECK(Word32)
+HAS_MYSQL_EQUALITY_CHECK(Word64)
+HAS_MYSQL_EQUALITY_CHECK(T.Text)
+HAS_MYSQL_EQUALITY_CHECK(TL.Text)
+HAS_MYSQL_EQUALITY_CHECK([Char])
+HAS_MYSQL_EQUALITY_CHECK(Scientific)
+HAS_MYSQL_EQUALITY_CHECK(Day)
+HAS_MYSQL_EQUALITY_CHECK(TimeOfDay)
+HAS_MYSQL_EQUALITY_CHECK(NominalDiffTime)
+HAS_MYSQL_EQUALITY_CHECK(LocalTime)
