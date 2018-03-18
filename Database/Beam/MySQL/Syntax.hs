@@ -99,7 +99,7 @@ instance IsSql92UpdateSyntax MysqlUpdateSyntax where
 
     updateStmt tbl fields where_ =
       MysqlUpdateSyntax $
-      emit "UPDATE" <> mysqlIdentifier tbl <>
+      emit "UPDATE " <> mysqlIdentifier tbl <>
       (case fields of
          [] -> mempty
          _ ->

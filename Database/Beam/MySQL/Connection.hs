@@ -37,6 +37,7 @@ import           Data.Maybe
 import           Data.Ratio
 import           Data.Scientific
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Lazy as TL
 import           Data.Time (LocalTime)
 import           Data.Word
@@ -74,7 +75,7 @@ instance MonadBeam MysqlCommandSyntax MySQL Connection MySQLM where
           cmdBuilder <- cmd (\_ b _ -> pure b) (MySQL.escape conn) mempty conn
           let cmdStr = BL.toStrict (toLazyByteString cmdBuilder)
 
-          dbg (BS.unpack cmdStr)
+          dbg (T.unpack (TE.decodeUtf8 cmdStr))
 
           MySQL.query conn cmdStr
 
