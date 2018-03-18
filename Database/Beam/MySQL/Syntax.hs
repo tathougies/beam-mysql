@@ -496,6 +496,10 @@ instance HasSqlValueSyntax MysqlValueSyntax LocalTime where
     sqlValueSyntax d = MysqlValueSyntax (emit ("'" <> dayBuilder (localDay d) <>
                                                " " <> todBuilder (localTimeOfDay d) <> "'"))
 
+                       instance HasSqlValueSyntax MysqlValueSyntax x => HasSqlValueSyntax MysqlValueSyntax (Maybe x) where
+    sqlValueSyntax Nothing = sqlValueSyntax SqlNull
+    sqlValueSyntax (Just x) = sqlValueSyntax x
+
 -- * Equality checks
 #define HAS_MYSQL_EQUALITY_CHECK(ty)                       \
   instance HasSqlEqualityCheck MysqlExpressionSyntax (ty); \
