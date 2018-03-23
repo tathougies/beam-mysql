@@ -41,7 +41,7 @@ fi
 
 if [ ! -f chinook-data/Chinook_MySql.sql ]; then
     status "Downloading MySql chinook data ..."
-    download "chinook-data/Chinook_MySql.sql" "$CHINOOK_MYSQL_URL" "$EXPECTED_SHA256" "tail -c +4 | sed '/CREATE TABLE/,$!d'"
+    download "chinook-data/Chinook_MySql.sql" "$CHINOOK_MYSQL_URL" "$EXPECTED_SHA256" "tail -c +4 | sed '/CREATE TABLE//,$!d'"
 fi
 
 status "Creating temporary MySql database ${DATABASE}..."
