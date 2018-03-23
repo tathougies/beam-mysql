@@ -3,7 +3,7 @@
 set -e
 
 CHINOOK_MYSQL_URL="https://raw.githubusercontent.com/lerocha/chinook-database/master/ChinookDatabase/DataSources/Chinook_MySql.sql"
-EXPECTED_SHA256="23e0822a57bfe70a2538f78cd197f73e7f977116f5e838f8397598fd188fb5df"
+EXPECTED_SHA256="409d9f34e6ab9f5a3a5dba58d9fa2a6484263e68659b5b7b22bbe97fd7be5353"
 
 HOST=$1
 PORT=$2
