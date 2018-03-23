@@ -41,14 +41,7 @@ fi
 
 if [ ! -f chinook-data/Chinook_MySql.sql ]; then
     status "Downloading MySql chinook data ..."
-    download "chinook-data/Chinook_MySql.sql.tmp" "$CHINOOK_MYSQL_URL" "$EXPECTED_SHA256"
-
-    status "Converting file"
-    cat chinook-data/Chinook_MySql.sql.tmp | tail -c +4 | sed '/CREATE TABLE/,$!d'  > chinook-data/Chinook_MySql.sql.conv
-
-    status "Finished conversion"
-    mv chinook-data/Chinook_MySql.sql.conv chinook-data/Chinook_MySql.sql
-    rm chinook-data/Chinook_MySql.sql.tmp
+    download "chinook-data/Chinook_MySql.sql" "$CHINOOK_MYSQL_URL" "$EXPECTED_SHA256" "tail -c +4 | sed '/CREATE TABLE/,$!d'"
 fi
 
 status "Creating temporary MySql database ${DATABASE}..."
