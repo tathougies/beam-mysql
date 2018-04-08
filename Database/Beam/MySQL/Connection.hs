@@ -134,7 +134,7 @@ mysqlUriSyntax :: c MysqlCommandSyntax MySQL Connection MySQLM
                -> BeamURIOpeners c
 mysqlUriSyntax =
     mkUriOpener "mysql:"
-        (\uri action ->
+        (\uri ->
              let stripSuffix s a =
                      reverse <$> stripPrefix (reverse s) (reverse a)
 
@@ -234,7 +234,7 @@ mysqlUriSyntax =
                           , connectUser = user, connectPassword = pw
                           , connectDatabase = db, connectOptions = options
                           , connectPath = "", connectSSL = Nothing }
-             in bracket (connect connInfo) close action)
+             in connect connInfo >>= \hdl -> pure (hdl, close hdl))
 
 #define FROM_BACKEND_ROW(ty) instance FromBackendRow MySQL ty
 
