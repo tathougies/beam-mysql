@@ -340,6 +340,14 @@ instance IsSql92ExpressionSyntax MysqlExpressionSyntax where
     lowerE x = MysqlExpressionSyntax (emit "LOWER(" <> fromMysqlExpression x <> emit ")")
     upperE x = MysqlExpressionSyntax (emit "UPPER(" <> fromMysqlExpression x <> emit ")")
 
+instance IsSql99ConcatExpressionSyntax MysqlExpressionSyntax where
+    concatE [] = valueE (sqlValueSyntax ("" :: T.Text))
+    concatE xs =
+        MysqlExpressionSyntax . mconcat $
+        [ emit "CONCAT("
+        , mysqlSepBy (emit ", ") (map fromMysqlExpression xs)
+        , emit ")" ]
+
 mysqlUnOp :: Builder -> MysqlExpressionSyntax -> MysqlExpressionSyntax
 mysqlUnOp op e = MysqlExpressionSyntax (emit op <> emit " (" <>
                                         fromMysqlExpression e <> emit ")")

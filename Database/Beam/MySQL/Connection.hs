@@ -5,6 +5,8 @@ module Database.Beam.MySQL.Connection
     ( MySQL(..), MySQL.Connection
     , MySQLM(..)
 
+    , runBeamMySQL, runBeamMySQLDebug
+
     , MysqlCommandSyntax(..)
     , MysqlSelectSyntax(..), MysqlInsertSyntax(..)
     , MysqlUpdateSyntax(..), MysqlDeleteSyntax(..)
@@ -63,11 +65,15 @@ instance Exception NotEnoughColumns where
         mconcat [ "Not enough columns while reading MySQL row. Only have "
                 , show colCnt, " column(s)" ]
 
+runBeamMySQLDebug :: (String -> IO ()) -> Connection -> MySQLM a -> IO a
+runBeamMySQLDebug = withMySQL
+
+runBeamMySQL :: Connection -> MySQLM a -> IO a
+runBeamMySQL = runBeamMySQLDebug (\_ -> pure ())
+
 instance MonadBeam MysqlCommandSyntax MySQL Connection MySQLM where
-    withDatabase conn action =
-      withMySQL (\_ -> pure ()) conn action
-    withDatabaseDebug dbg conn action =
-      withMySQL dbg conn action
+    withDatabase = runBeamMySQL
+    withDatabaseDebug = runBeamMySQLDebug
 
     runReturningMany (MysqlCommandSyntax (MysqlSyntax cmd))
                      (consume :: MySQLM (Maybe x) -> MySQLM a) =
