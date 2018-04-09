@@ -50,9 +50,9 @@ echo "CREATE DATABASE ${DATABASE}" | run_mysql
 
 (echo "START TRANSACTION; SET autocommit=0;"; pv chinook-data/Chinook_MySql.sql; echo "COMMIT;") | run_mysql "${DATABASE}"
 
-echo "ALTER TABLE `InvoiceLine` DROP FOREIGN KEY `FK_InvoiceLineInvoiceId`" | run_mysql "${DATABASE}"
-echo "ALTER TABLE `Invoice` ALTER `InvoiceId` INTEGER NOT NULL AUTO_INCREMENT" | run_mysql "${DATABASE}"
-echo "ALTER TABLE `InvoiceLine` ADD FOREIGN KEY (`InvoiceId`) REFERENCES `Invoice`(`InvoiceId`) ON DELETE NO ACTION ON UPDATE NO ACTION" | run_mysql "${DATABASE}"
+echo "ALTER TABLE \`InvoiceLine\` DROP FOREIGN KEY \`FK_InvoiceLineInvoiceId\`" | run_mysql "${DATABASE}"
+echo "ALTER TABLE \`Invoice\` ALTER \`InvoiceId\` INTEGER NOT NULL AUTO_INCREMENT" | run_mysql "${DATABASE}"
+echo "ALTER TABLE \`InvoiceLine\` ADD FOREIGN KEY (\`InvoiceId\`) REFERENCES \`Invoice\`(\`InvoiceId\`) ON DELETE NO ACTION ON UPDATE NO ACTION" | run_mysql "${DATABASE}"
 
 status "Success"
 print_open_statement
