@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Database.Beam.MySQL.Syntax where
 
@@ -14,8 +15,9 @@ import           Data.ByteString.Builder
 import           Data.ByteString.Builder.Scientific (scientificBuilder)
 import           Data.Fixed
 import           Data.Int
-import           Data.Monoid ((<>))
+import           Data.Monoid (Monoid)
 import           Data.Scientific (Scientific)
+import           Data.Semigroup (Semigroup, (<>))
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -55,6 +57,9 @@ newtype MysqlExtractFieldSyntax = MysqlExtractFieldSyntax { fromMysqlExtractFiel
 instance Eq MysqlSyntax where
     _ == _ = False
 
+instance Semigroup MysqlSyntax where
+    (<>) = mappend
+
 instance Monoid MysqlSyntax where
     mempty = MysqlSyntax id
     mappend (MysqlSyntax a) (MysqlSyntax b) =
@@ -81,6 +86,9 @@ mysqlSepBy :: MysqlSyntax -> [MysqlSyntax] -> MysqlSyntax
 mysqlSepBy _ [] = mempty
 mysqlSepBy _ [a] = a
 mysqlSepBy sep (a:as) = a <> foldMap (sep <>) as
+
+mysqlParens :: MysqlSyntax -> MysqlSyntax
+mysqlParens a = emit "(" <> a <> emit ")"
 
 instance IsSql92Syntax MysqlCommandSyntax where
     type Sql92SelectSyntax MysqlCommandSyntax = MysqlSelectSyntax
@@ -259,6 +267,16 @@ instance IsSql92ProjectionSyntax MysqlProjectionSyntax where
                              maybe mempty
                                    (\nm' -> emit " AS " <> mysqlIdentifier nm') nm)
                         exprs)
+
+instance IsCustomSqlSyntax MysqlExpressionSyntax where
+    newtype CustomSqlSyntax MysqlExpressionSyntax =
+        MysqlCustomExpressionSyntax { fromMysqlCustomExpression :: MysqlSyntax }
+        deriving (Monoid, Semigroup)
+    customExprSyntax = MysqlExpressionSyntax . fromMysqlCustomExpression
+    renderSyntax = MysqlCustomExpressionSyntax . mysqlParens . fromMysqlExpression
+
+instance IsString (CustomSqlSyntax MysqlExpressionSyntax) where
+    fromString = MysqlCustomExpressionSyntax . emit . fromString
 
 instance IsSql92ExpressionSyntax MysqlExpressionSyntax where
     type Sql92ExpressionValueSyntax MysqlExpressionSyntax = MysqlValueSyntax
