@@ -30,6 +30,7 @@ import           Control.Monad.Except
 import           Control.Monad.Free.Church
 import           Control.Monad.Reader
 
+import qualified Data.Aeson as A (Value)
 import           Data.ByteString.Builder
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
@@ -264,3 +265,4 @@ FROM_BACKEND_ROW(BL.ByteString)
 FROM_BACKEND_ROW(T.Text)
 FROM_BACKEND_ROW(TL.Text)
 FROM_BACKEND_ROW(LocalTime)
+FROM_BACKEND_ROW(A.Value)
