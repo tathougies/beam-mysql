@@ -511,7 +511,7 @@ instance HasSqlValueSyntax MysqlValueSyntax x => HasSqlValueSyntax MysqlValueSyn
     sqlValueSyntax (Just x) = sqlValueSyntax x
 
 instance HasSqlValueSyntax MysqlValueSyntax A.Value where
-    sqlValueSyntax = MysqlValueSyntax . escape . BL.toStrict . A.encode
+    sqlValueSyntax = MysqlValueSyntax . (\x -> emit "'" <> x <> emit "'") . escape . BL.toStrict . A.encode
 
 -- * Equality checks
 #define HAS_MYSQL_EQUALITY_CHECK(ty)                       \
