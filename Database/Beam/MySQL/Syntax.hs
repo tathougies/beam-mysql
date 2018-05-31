@@ -9,10 +9,12 @@ import           Database.Beam.Query.SQL92
 
 import           Database.MySQL.Base (Connection)
 
+import qualified Data.Aeson as A (Value, encode)
 import           Data.String
 import           Data.ByteString (ByteString)
 import           Data.ByteString.Builder
 import           Data.ByteString.Builder.Scientific (scientificBuilder)
+import qualified Data.ByteString.Lazy as BL (toStrict)
 import           Data.Fixed
 import           Data.Int
 import           Data.Monoid (Monoid)
@@ -525,6 +527,9 @@ instance HasSqlValueSyntax MysqlValueSyntax LocalTime where
 instance HasSqlValueSyntax MysqlValueSyntax x => HasSqlValueSyntax MysqlValueSyntax (Maybe x) where
     sqlValueSyntax Nothing = sqlValueSyntax SqlNull
     sqlValueSyntax (Just x) = sqlValueSyntax x
+
+instance HasSqlValueSyntax MysqlValueSyntax A.Value where
+    sqlValueSyntax = MysqlValueSyntax . (\x -> emit "'" <> x <> emit "'") . escape . BL.toStrict . A.encode
 
 -- * Equality checks
 #define HAS_MYSQL_EQUALITY_CHECK(ty)                       \

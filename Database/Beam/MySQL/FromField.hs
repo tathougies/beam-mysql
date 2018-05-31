@@ -19,6 +19,7 @@ import           Control.Applicative
 import           Control.Exception
 import           Control.Monad.Except
 
+import qualified Data.Aeson as A (Value, eitherDecodeStrict)
 import           Data.Attoparsec.ByteString.Char8
 import qualified Data.ByteString.Char8 as SB
 import qualified Data.ByteString.Lazy.Char8 as LB
@@ -152,6 +153,12 @@ instance FromField NominalDiffTime where
       where
         checkTime Time = True
         checkTime _ = False
+
+instance FromField A.Value where
+    fromField f bs =
+        case (maybeToRight "Failed to extract JSON bytes." bs) >>= A.eitherDecodeStrict of
+            Left err -> conversionFailed f err
+            Right x -> pure x
 
 dayAndTime :: Parser (Day, TimeOfDay)
 dayAndTime = do
@@ -290,3 +297,7 @@ atto :: Typeable a => (Type -> Bool) -> Parser a
      -> Field -> Maybe SB.ByteString -> FieldParser a
 atto checkType parser =
   doConvert checkType (parseOnly parser)
+
+maybeToRight :: b -> Maybe a -> Either b a
+maybeToRight _ (Just x) = Right x
+maybeToRight y Nothing  = Left y
