@@ -27,6 +27,8 @@ import qualified Database.MySQL.Base.Types as MySQL
 
 import           Control.Exception
 import           Control.Monad.Except
+import           Control.Monad.Fail (MonadFail)
+import qualified Control.Monad.Fail as Fail
 import           Control.Monad.Free.Church
 import           Control.Monad.Reader
 
@@ -56,6 +58,10 @@ instance BeamBackend MySQL where
 
 newtype MySQLM a = MySQLM (ReaderT (String -> IO (), Connection) IO a)
     deriving (Monad, MonadIO, Applicative, Functor)
+
+instance MonadFail MySQLM where
+    fail e = fail $ "Internal Error with: " <> show e
+
 data NotEnoughColumns
     = NotEnoughColumns
     { _errColCount :: Int

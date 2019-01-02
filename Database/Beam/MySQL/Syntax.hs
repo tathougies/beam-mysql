@@ -145,10 +145,11 @@ instance IsSql92InsertValuesSyntax MysqlInsertValuesSyntax where
 instance IsSql92DeleteSyntax MysqlDeleteSyntax where
     type Sql92DeleteExpressionSyntax MysqlDeleteSyntax = MysqlExpressionSyntax
 
-    deleteStmt tbl where_ =
+    deleteStmt tbl _ where_ =
       MysqlDeleteSyntax $
       emit "DELETE FROM " <> mysqlIdentifier tbl <>
       maybe mempty (\where' -> emit " WHERE " <> fromMysqlExpression where') where_
+    deleteSupportsAlias _ = False
 
 instance IsSql92SelectSyntax MysqlSelectSyntax where
     type Sql92SelectSelectTableSyntax MysqlSelectSyntax = MysqlSelectTableSyntax
