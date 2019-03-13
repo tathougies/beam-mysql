@@ -1,5 +1,5 @@
 name:                 beam-mysql
-version:              0.1.0.0
+version:              0.2.0.0
 synopsis:             Connection layer between beam and MySQL/MariaDB
 description:
 homepage:             http://travis.athougies.net/projects/beam.html
@@ -18,7 +18,7 @@ library
                       Database.Beam.MySQL.Syntax
                       Database.Beam.MySQL.FromField
   build-depends:      base                 >=4.7  && <5.0,
-                      beam-core            >=0.7  && <0.8,
+                      beam-core            >=0.8  && <0.9,
 
                       mysql                >=0.1  && <0.2,
 
