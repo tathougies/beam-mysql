@@ -572,7 +572,7 @@ instance HasSqlValueSyntax MysqlValueSyntax A.Value where
     sqlValueSyntax = MysqlValueSyntax . (\x -> emit "'" <> x <> emit "'") . escape . BL.toStrict . A.encode
 
 mysqlCharLen :: Maybe Word -> MysqlSyntax
-mysqlCharLen = maybe (emit "(MAX)") (mysqlParens . emit . fromString . show)
+mysqlCharLen = maybe (emit "MAX") (emit . fromString . show)
 
 mysqlNumPrec :: Maybe (Word, Maybe Word) -> MysqlSyntax
 mysqlNumPrec Nothing = mempty
