@@ -374,7 +374,7 @@ instance IsSql92ExpressionSyntax MysqlExpressionSyntax where
                                           emit ")")
     extractE field from = MysqlExpressionSyntax (emit "EXTRACT(" <> fromMysqlExtractField field <>
                                                  emit " FROM (" <> fromMysqlExpression from <> emit ")")
-    castE e to = MysqlExpressionSyntax (emit "CAST(" <> fromMysqlExpression e <> emit ") AS " <>
+    castE e to = MysqlExpressionSyntax (emit "CAST((" <> fromMysqlExpression e <> emit ") AS " <>
                                         fromMysqlDataType to <> emit ")")
     caseE cases else' =
         MysqlExpressionSyntax $
