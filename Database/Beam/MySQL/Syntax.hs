@@ -54,7 +54,9 @@ newtype MysqlFromSyntax = MysqlFromSyntax { fromMysqlFrom :: MysqlSyntax }
 newtype MysqlGroupingSyntax = MysqlGroupingSyntax { fromMysqlGrouping :: MysqlSyntax }
 newtype MysqlTableSourceSyntax = MysqlTableSourceSyntax { fromMysqlTableSource :: MysqlSyntax }
 newtype MysqlProjectionSyntax = MysqlProjectionSyntax { fromMysqlProjection :: MysqlSyntax }
-newtype MysqlDataTypeSyntax = MysqlDataTypeSyntax { fromMysqlDataType :: MysqlSyntax }
+data MysqlDataTypeSyntax
+  = MysqlDataTypeSyntax { fromMysqlDataType :: MysqlSyntax
+                        , fromMysqlDataTypeCast :: MysqlSyntax }
 newtype MysqlExtractFieldSyntax = MysqlExtractFieldSyntax { fromMysqlExtractField :: MysqlSyntax }
 
 instance Eq MysqlSyntax where
@@ -197,8 +199,8 @@ instance IsSql92SelectTableSyntax MysqlSelectTableSyntax where
 
     unionTables True  = mysqlTblOp "UNION ALL"
     unionTables False = mysqlTblOp "UNION"
-    intersectTables _ = error "MySQL doesn't support INTERSECT"
-    exceptTable _ = error "MySQL doesn't support EXCEPT"
+    intersectTables _ = mysqlTblOp "INTERSECT"
+    exceptTable _ = mysqlTblOp "EXCEPT"
 
 mysqlTblOp :: Builder -> MysqlSelectTableSyntax -> MysqlSelectTableSyntax -> MysqlSelectTableSyntax
 mysqlTblOp op a b =
@@ -250,10 +252,10 @@ instance IsSql92TableSourceSyntax MysqlTableSourceSyntax where
 
     tableNamed t = MysqlTableSourceSyntax (fromMysqlTableName t)
     tableFromSubSelect s = MysqlTableSourceSyntax (emit "(" <> fromMysqlSelect s <> emit ")")
-    tableFromValues vss = MysqlTableSourceSyntax (emit "VALUES" <>
-                                                  mysqlSepBy (emit ", ")
-                                                     (map (mysqlParens . mysqlSepBy (emit ", ") .
-                                                           map fromMysqlExpression) vss))
+    tableFromValues vss = MysqlTableSourceSyntax . mysqlParens $
+                          mysqlSepBy (emit " UNION ")
+                            (map (mappend (emit "SELECT ") . mysqlSepBy (emit ", ") .
+                                    map (mysqlParens . fromMysqlExpression)) vss)
 
 instance IsSql92OrderingSyntax MysqlOrderingSyntax where
     type Sql92OrderingExpressionSyntax MysqlOrderingSyntax = MysqlExpressionSyntax
@@ -274,24 +276,27 @@ instance IsSql92FieldNameSyntax MysqlFieldNameSyntax where
 
 -- | Note: MySQL does not allow timezones in date/time types
 instance IsSql92DataTypeSyntax MysqlDataTypeSyntax where
-  domainType t = MysqlDataTypeSyntax (mysqlIdentifier t)
-  charType len cs = MysqlDataTypeSyntax (emit "CHAR(" <> mysqlCharLen len <> emit ")" <> mysqlOptCharSet cs)
-  varCharType len cs = MysqlDataTypeSyntax (emit "VARCHAR(" <> mysqlCharLen len <> emit ")" <> mysqlOptCharSet cs)
-  nationalCharType len = MysqlDataTypeSyntax (emit "NATIONAL CHAR(" <> mysqlCharLen  len <> emit ")")
-  nationalVarCharType len = MysqlDataTypeSyntax (emit "NATIONAL CHAR VARYING(" <> mysqlCharLen len <> emit ")")
-  bitType len = MysqlDataTypeSyntax (emit "BIT(" <> mysqlCharLen len <> emit ")")
-  varBitType len = MysqlDataTypeSyntax (emit "VARBINARY(" <> mysqlCharLen len <> emit ")")
-  numericType prec = MysqlDataTypeSyntax (emit "NUMERIC" <> mysqlNumPrec prec)
-  decimalType prec = MysqlDataTypeSyntax (emit "DECIMAL" <> mysqlNumPrec prec)
-  intType = MysqlDataTypeSyntax (emit "INT")
-  smallIntType = MysqlDataTypeSyntax (emit "SMALL INT")
-  floatType prec = MysqlDataTypeSyntax (emit "FLOAT" <> maybe mempty (mysqlParens . emit . fromString . show) prec)
-  doubleType = MysqlDataTypeSyntax (emit "DOUBLE")
-  realType = MysqlDataTypeSyntax (emit "REAL")
+  domainType t = MysqlDataTypeSyntax (mysqlIdentifier t) (mysqlIdentifier t)
+  charType len cs = MysqlDataTypeSyntax (emit "CHAR(" <> mysqlCharLen len <> emit ")" <> mysqlOptCharSet cs) (emit "CHAR")
+  varCharType len cs = MysqlDataTypeSyntax (emit "VARCHAR(" <> mysqlCharLen len <> emit ")" <> mysqlOptCharSet cs) (emit "CHAR")
+  nationalCharType len = MysqlDataTypeSyntax (emit "NATIONAL CHAR(" <> mysqlCharLen  len <> emit ")") (emit "CHAR")
+  nationalVarCharType len = MysqlDataTypeSyntax (emit "NATIONAL CHAR VARYING(" <> mysqlCharLen len <> emit ")") (emit "CHAR")
+  bitType len = MysqlDataTypeSyntax (emit "BIT(" <> mysqlCharLen len <> emit ")") (emit "BINARY")
+  varBitType len = MysqlDataTypeSyntax (emit "VARBINARY(" <> mysqlCharLen len <> emit ")") (emit "BINARY")
+  numericType prec = MysqlDataTypeSyntax (emit "NUMERIC" <> mysqlNumPrec prec) (emit "DECIMAL" <> mysqlNumPrec prec)
+  decimalType prec = MysqlDataTypeSyntax ty ty
+    where ty = emit "DECIMAL" <> mysqlNumPrec prec
+  intType = MysqlDataTypeSyntax (emit "INT") (emit "INTEGER")
+  smallIntType = MysqlDataTypeSyntax (emit "SMALL INT") (emit "INTEGER")
+  floatType prec = MysqlDataTypeSyntax (emit "FLOAT" <> maybe mempty (mysqlParens . emit . fromString . show) prec) (emit "DECIMAL")
+  doubleType = MysqlDataTypeSyntax (emit "DOUBLE") (emit "DECIMAL")
+  realType = MysqlDataTypeSyntax (emit "REAL") (emit "DECIMAL")
 
-  dateType = MysqlDataTypeSyntax (emit "DATE")
-  timeType _prec _withTimeZone = MysqlDataTypeSyntax (emit "TIME")
-  timestampType _prec _withTimeZone = MysqlDataTypeSyntax (emit "TIMESTAMP")
+  dateType = MysqlDataTypeSyntax ty ty
+    where ty = emit "DATE"
+  timeType _prec _withTimeZone = MysqlDataTypeSyntax ty ty
+    where ty = emit "TIME"
+  timestampType _prec _withTimeZone = MysqlDataTypeSyntax (emit "TIMESTAMP") (emit "DATETIME")
 
 instance IsSql92ProjectionSyntax MysqlProjectionSyntax where
     type Sql92ProjectionExpressionSyntax MysqlProjectionSyntax = MysqlExpressionSyntax
@@ -375,7 +380,7 @@ instance IsSql92ExpressionSyntax MysqlExpressionSyntax where
     extractE field from = MysqlExpressionSyntax (emit "EXTRACT(" <> fromMysqlExtractField field <>
                                                  emit " FROM (" <> fromMysqlExpression from <> emit ")")
     castE e to = MysqlExpressionSyntax (emit "CAST((" <> fromMysqlExpression e <> emit ") AS " <>
-                                        fromMysqlDataType to <> emit ")")
+                                        fromMysqlDataTypeCast to <> emit ")")
     caseE cases else' =
         MysqlExpressionSyntax $
         emit "CASE " <>
