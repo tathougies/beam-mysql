@@ -1,5 +1,5 @@
 name:                 beam-mysql
-version:              0.1.0.0
+version:              0.2.0.0
 synopsis:             Connection layer between beam and MySQL/MariaDB
 description:
 homepage:             http://travis.athougies.net/projects/beam.html
@@ -18,7 +18,7 @@ library
                       Database.Beam.MySQL.Syntax
                       Database.Beam.MySQL.FromField
   build-depends:      base                 >=4.7  && <5.0,
-                      beam-core            >=0.7  && <0.8,
+                      beam-core            >=0.8  && <0.9,
 
                       mysql                >=0.1  && <0.2,
 
@@ -26,13 +26,13 @@ library
                       bytestring           >=0.10 && <0.11,
 
                       attoparsec,
-
+                      aeson                >=0.11 && <1.5,
                       hashable             >=1.1  && <1.3,
                       time                 >=1.6  && <1.10,
                       mtl                  >=2.1  && <2.3,
                       case-insensitive     >=1.2  && <1.3,
                       scientific           >=0.3  && <0.4,
-                      free                 >=4.12 && <5.1,
+                      free                 >=4.12 && <5.2,
                       network-uri
   default-language:   Haskell2010
   default-extensions: ScopedTypeVariables, OverloadedStrings, MultiParamTypeClasses, RankNTypes, FlexibleInstances,

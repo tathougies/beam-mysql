@@ -19,17 +19,22 @@ module Database.Beam.MySQL.Connection
 import           Database.Beam.MySQL.Syntax
 import           Database.Beam.MySQL.FromField
 
-import           Database.Beam.Backend.SQL
+import           Database.Beam.Backend
 import           Database.Beam.Backend.URI
+import           Database.Beam.Query
+import           Database.Beam.Query.SQL92
 
 import           Database.MySQL.Base as MySQL
 import qualified Database.MySQL.Base.Types as MySQL
 
 import           Control.Exception
 import           Control.Monad.Except
+import           Control.Monad.Fail (MonadFail)
+import qualified Control.Monad.Fail as Fail
 import           Control.Monad.Free.Church
 import           Control.Monad.Reader
 
+import qualified Data.Aeson as A (Value)
 import           Data.ByteString.Builder
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
@@ -41,7 +46,7 @@ import           Data.Scientific
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Lazy as TL
-import           Data.Time (LocalTime)
+import           Data.Time (Day, LocalTime, NominalDiffTime, TimeOfDay)
 import           Data.Word
 
 import           Network.URI
@@ -50,11 +55,21 @@ import           Text.Read hiding (step)
 
 data MySQL = MySQL
 
+instance BeamSqlBackendIsString MySQL String
+instance BeamSqlBackendIsString MySQL T.Text
+
 instance BeamBackend MySQL where
     type BackendFromField MySQL = FromField
 
+instance BeamSqlBackend MySQL
+type instance BeamSqlBackendSyntax MySQL = MysqlCommandSyntax
+
 newtype MySQLM a = MySQLM (ReaderT (String -> IO (), Connection) IO a)
     deriving (Monad, MonadIO, Applicative, Functor)
+
+instance MonadFail MySQLM where
+    fail e = fail $ "Internal Error with: " <> show e
+
 data NotEnoughColumns
     = NotEnoughColumns
     { _errColCount :: Int
@@ -65,16 +80,23 @@ instance Exception NotEnoughColumns where
         mconcat [ "Not enough columns while reading MySQL row. Only have "
                 , show colCnt, " column(s)" ]
 
+data CouldNotReadColumn
+  = CouldNotReadColumn
+  { _errColIndex :: Int
+  , _errColMsg   :: String }
+  deriving Show
+
+instance Exception CouldNotReadColumn where
+  displayException (CouldNotReadColumn idx msg) =
+    mconcat [ "Could not read column ", show idx, ": ", msg ]
+
 runBeamMySQLDebug :: (String -> IO ()) -> Connection -> MySQLM a -> IO a
 runBeamMySQLDebug = withMySQL
 
 runBeamMySQL :: Connection -> MySQLM a -> IO a
 runBeamMySQL = runBeamMySQLDebug (\_ -> pure ())
 
-instance MonadBeam MysqlCommandSyntax MySQL Connection MySQLM where
-    withDatabase = runBeamMySQL
-    withDatabaseDebug = runBeamMySQLDebug
-
+instance MonadBeam MySQL MySQLM where
     runReturningMany (MysqlCommandSyntax (MysqlSyntax cmd))
                      (consume :: MySQLM (Maybe x) -> MySQLM a) =
         MySQLM . ReaderT $ \(dbg, conn) -> do
@@ -96,7 +118,8 @@ instance MonadBeam MysqlCommandSyntax MySQL Connection MySQLM where
                     case fields of
                       [] -> pure Nothing
                       _ -> do
-                        res <- runF fromBackendRow (\x _ _ -> pure (Right x)) step
+                        let FromBackendRowM go = fromBackendRow
+                        res <- runF go (\x _ _ -> pure (Right x)) step
                                  0 (zip fieldDescs fields)
                         case res of
                           Left err -> throwIO err
@@ -126,10 +149,10 @@ withMySQL :: (String -> IO ()) -> Connection
 withMySQL dbg conn (MySQLM a) =
     runReaderT a (dbg, conn)
 
-mysqlUriSyntax :: c MysqlCommandSyntax MySQL Connection MySQLM
+mysqlUriSyntax :: c MySQL Connection MySQLM
                -> BeamURIOpeners c
 mysqlUriSyntax =
-    mkUriOpener "mysql:"
+    mkUriOpener (withMySQL (const (pure ()))) "mysql:"
         (\uri ->
              let stripSuffix s a =
                      reverse <$> stripPrefix (reverse s) (reverse a)
@@ -254,3 +277,35 @@ FROM_BACKEND_ROW(BL.ByteString)
 FROM_BACKEND_ROW(T.Text)
 FROM_BACKEND_ROW(TL.Text)
 FROM_BACKEND_ROW(LocalTime)
+FROM_BACKEND_ROW(A.Value)
+
+-- * Equality checks
+#define HAS_MYSQL_EQUALITY_CHECK(ty)                       \
+  instance HasSqlEqualityCheck MySQL (ty); \
+  instance HasSqlQuantifiedEqualityCheck MySQL (ty);
+
+HAS_MYSQL_EQUALITY_CHECK(Bool)
+HAS_MYSQL_EQUALITY_CHECK(Double)
+HAS_MYSQL_EQUALITY_CHECK(Float)
+HAS_MYSQL_EQUALITY_CHECK(Int)
+HAS_MYSQL_EQUALITY_CHECK(Int8)
+HAS_MYSQL_EQUALITY_CHECK(Int16)
+HAS_MYSQL_EQUALITY_CHECK(Int32)
+HAS_MYSQL_EQUALITY_CHECK(Int64)
+HAS_MYSQL_EQUALITY_CHECK(Integer)
+HAS_MYSQL_EQUALITY_CHECK(Word)
+HAS_MYSQL_EQUALITY_CHECK(Word8)
+HAS_MYSQL_EQUALITY_CHECK(Word16)
+HAS_MYSQL_EQUALITY_CHECK(Word32)
+HAS_MYSQL_EQUALITY_CHECK(Word64)
+HAS_MYSQL_EQUALITY_CHECK(T.Text)
+HAS_MYSQL_EQUALITY_CHECK(TL.Text)
+HAS_MYSQL_EQUALITY_CHECK([Char])
+HAS_MYSQL_EQUALITY_CHECK(Scientific)
+HAS_MYSQL_EQUALITY_CHECK(Day)
+HAS_MYSQL_EQUALITY_CHECK(TimeOfDay)
+HAS_MYSQL_EQUALITY_CHECK(NominalDiffTime)
+HAS_MYSQL_EQUALITY_CHECK(LocalTime)
+
+instance HasQBuilder MySQL where
+    buildSqlQuery = buildSql92Query' True

@@ -1,21 +1,25 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Database.Beam.MySQL.Syntax where
 
 import           Database.Beam.Backend.SQL
 import           Database.Beam.Query
-import           Database.Beam.Query.SQL92
 
 import           Database.MySQL.Base (Connection)
 
-import           Data.String
+import qualified Data.Aeson as A (Value, encode)
 import           Data.ByteString (ByteString)
 import           Data.ByteString.Builder
 import           Data.ByteString.Builder.Scientific (scientificBuilder)
+import qualified Data.ByteString.Lazy as BL (toStrict)
 import           Data.Fixed
 import           Data.Int
-import           Data.Monoid ((<>))
+import           Data.Maybe (maybe)
+import           Data.Monoid (Monoid)
 import           Data.Scientific (Scientific)
+import           Data.Semigroup (Semigroup, (<>))
+import           Data.String
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -37,6 +41,7 @@ newtype MysqlSelectSyntax = MysqlSelectSyntax { fromMysqlSelect :: MysqlSyntax }
 newtype MysqlInsertSyntax = MysqlInsertSyntax { fromMysqlInsert :: MysqlSyntax }
 newtype MysqlUpdateSyntax = MysqlUpdateSyntax { fromMysqlUpdate :: MysqlSyntax }
 newtype MysqlDeleteSyntax = MysqlDeleteSyntax { fromMysqlDelete :: MysqlSyntax }
+newtype MysqlTableNameSyntax = MysqlTableNameSyntax { fromMysqlTableName :: MysqlSyntax }
 newtype MysqlFieldNameSyntax = MysqlFieldNameSyntax { fromMysqlFieldName :: MysqlSyntax }
 newtype MysqlExpressionSyntax = MysqlExpressionSyntax { fromMysqlExpression :: MysqlSyntax } deriving Eq
 newtype MysqlValueSyntax = MysqlValueSyntax { fromMysqlValue :: MysqlSyntax }
@@ -49,11 +54,16 @@ newtype MysqlFromSyntax = MysqlFromSyntax { fromMysqlFrom :: MysqlSyntax }
 newtype MysqlGroupingSyntax = MysqlGroupingSyntax { fromMysqlGrouping :: MysqlSyntax }
 newtype MysqlTableSourceSyntax = MysqlTableSourceSyntax { fromMysqlTableSource :: MysqlSyntax }
 newtype MysqlProjectionSyntax = MysqlProjectionSyntax { fromMysqlProjection :: MysqlSyntax }
-newtype MysqlDataTypeSyntax = MysqlDataTypeSyntax { fromMysqlDataType :: MysqlSyntax }
+data MysqlDataTypeSyntax
+  = MysqlDataTypeSyntax { fromMysqlDataType :: MysqlSyntax
+                        , fromMysqlDataTypeCast :: MysqlSyntax }
 newtype MysqlExtractFieldSyntax = MysqlExtractFieldSyntax { fromMysqlExtractField :: MysqlSyntax }
 
 instance Eq MysqlSyntax where
     _ == _ = False
+
+instance Semigroup MysqlSyntax where
+    (<>) = mappend
 
 instance Monoid MysqlSyntax where
     mempty = MysqlSyntax id
@@ -82,6 +92,9 @@ mysqlSepBy _ [] = mempty
 mysqlSepBy _ [a] = a
 mysqlSepBy sep (a:as) = a <> foldMap (sep <>) as
 
+mysqlParens :: MysqlSyntax -> MysqlSyntax
+mysqlParens a = emit "(" <> a <> emit ")"
+
 instance IsSql92Syntax MysqlCommandSyntax where
     type Sql92SelectSyntax MysqlCommandSyntax = MysqlSelectSyntax
     type Sql92InsertSyntax MysqlCommandSyntax = MysqlInsertSyntax
@@ -96,10 +109,11 @@ instance IsSql92Syntax MysqlCommandSyntax where
 instance IsSql92UpdateSyntax MysqlUpdateSyntax where
     type Sql92UpdateFieldNameSyntax MysqlUpdateSyntax = MysqlFieldNameSyntax
     type Sql92UpdateExpressionSyntax MysqlUpdateSyntax = MysqlExpressionSyntax
+    type Sql92UpdateTableNameSyntax MysqlUpdateSyntax = MysqlTableNameSyntax
 
     updateStmt tbl fields where_ =
       MysqlUpdateSyntax $
-      emit "UPDATE " <> mysqlIdentifier tbl <>
+      emit "UPDATE " <> fromMysqlTableName tbl <>
       (case fields of
          [] -> mempty
          _ ->
@@ -110,10 +124,11 @@ instance IsSql92UpdateSyntax MysqlUpdateSyntax where
 
 instance IsSql92InsertSyntax MysqlInsertSyntax where
     type Sql92InsertValuesSyntax MysqlInsertSyntax = MysqlInsertValuesSyntax
+    type Sql92InsertTableNameSyntax MysqlInsertSyntax = MysqlTableNameSyntax
 
     insertStmt tblName fields values =
       MysqlInsertSyntax $
-      emit "INSERT INTO " <> mysqlIdentifier tblName <> emit "(" <>
+      emit "INSERT INTO " <> fromMysqlTableName tblName <> emit "(" <>
       mysqlSepBy (emit ", ") (map mysqlIdentifier fields) <> emit ")" <>
       fromMysqlInsertValues values
 
@@ -134,11 +149,13 @@ instance IsSql92InsertValuesSyntax MysqlInsertValuesSyntax where
 
 instance IsSql92DeleteSyntax MysqlDeleteSyntax where
     type Sql92DeleteExpressionSyntax MysqlDeleteSyntax = MysqlExpressionSyntax
+    type Sql92DeleteTableNameSyntax MysqlDeleteSyntax = MysqlTableNameSyntax
 
-    deleteStmt tbl where_ =
+    deleteStmt tbl _ where_ =
       MysqlDeleteSyntax $
-      emit "DELETE FROM " <> mysqlIdentifier tbl <>
+      emit "DELETE FROM " <> fromMysqlTableName tbl <>
       maybe mempty (\where' -> emit " WHERE " <> fromMysqlExpression where') where_
+    deleteSupportsAlias _ = False
 
 instance IsSql92SelectSyntax MysqlSelectSyntax where
     type Sql92SelectSelectTableSyntax MysqlSelectSyntax = MysqlSelectTableSyntax
@@ -161,8 +178,6 @@ instance IsSql92SelectSyntax MysqlSelectSyntax where
             -- TODO figure out a betterlimit
             emit " LIMIT 1000000000 OFFSET " <> emit (integerDec offset')
         _ -> mempty
-instance HasQBuilder MysqlSelectSyntax where
-    buildSqlQuery = buildSql92Query' True
 
 instance IsSql92SelectTableSyntax MysqlSelectTableSyntax where
     type Sql92SelectTableSelectSyntax MysqlSelectTableSyntax = MysqlSelectSyntax
@@ -184,8 +199,8 @@ instance IsSql92SelectTableSyntax MysqlSelectTableSyntax where
 
     unionTables True  = mysqlTblOp "UNION ALL"
     unionTables False = mysqlTblOp "UNION"
-    intersectTables _ = error "MySQL doesn't support INTERSECT"
-    exceptTable _ = error "MySQL doesn't support EXCEPT"
+    intersectTables _ = mysqlTblOp "INTERSECT"
+    exceptTable _ = mysqlTblOp "EXCEPT"
 
 mysqlTblOp :: Builder -> MysqlSelectTableSyntax -> MysqlSelectTableSyntax -> MysqlSelectTableSyntax
 mysqlTblOp op a b =
@@ -208,9 +223,10 @@ instance IsSql92FromSyntax MysqlFromSyntax where
     type Sql92FromTableSourceSyntax MysqlFromSyntax = MysqlTableSourceSyntax
 
     fromTable tableSrc Nothing = MysqlFromSyntax (fromMysqlTableSource tableSrc)
-    fromTable tableSrc (Just nm) =
+    fromTable tableSrc (Just (nm, cols)) =
         MysqlFromSyntax $
-        fromMysqlTableSource tableSrc <> emit " AS " <> mysqlIdentifier nm
+        fromMysqlTableSource tableSrc <> emit " AS " <> mysqlIdentifier nm <>
+        maybe mempty (mysqlParens . mysqlSepBy (emit ",") . fmap mysqlIdentifier) cols
 
     innerJoin = mysqlJoin "JOIN"
 
@@ -231,9 +247,15 @@ mysqlJoin joinType a b Nothing =
 
 instance IsSql92TableSourceSyntax MysqlTableSourceSyntax where
     type Sql92TableSourceSelectSyntax MysqlTableSourceSyntax = MysqlSelectSyntax
+    type Sql92TableSourceTableNameSyntax MysqlTableSourceSyntax = MysqlTableNameSyntax
+    type Sql92TableSourceExpressionSyntax MysqlTableSourceSyntax = MysqlExpressionSyntax
 
-    tableNamed t = MysqlTableSourceSyntax (mysqlIdentifier t)
+    tableNamed t = MysqlTableSourceSyntax (fromMysqlTableName t)
     tableFromSubSelect s = MysqlTableSourceSyntax (emit "(" <> fromMysqlSelect s <> emit ")")
+    tableFromValues vss = MysqlTableSourceSyntax . mysqlParens $
+                          mysqlSepBy (emit " UNION ")
+                            (map (mappend (emit "SELECT ") . mysqlSepBy (emit ", ") .
+                                    map (mysqlParens . fromMysqlExpression)) vss)
 
 instance IsSql92OrderingSyntax MysqlOrderingSyntax where
     type Sql92OrderingExpressionSyntax MysqlOrderingSyntax = MysqlExpressionSyntax
@@ -241,12 +263,40 @@ instance IsSql92OrderingSyntax MysqlOrderingSyntax where
     ascOrdering e = MysqlOrderingSyntax (fromMysqlExpression e <> emit " ASC")
     descOrdering e = MysqlOrderingSyntax (fromMysqlExpression e <> emit " DESC")
 
+instance IsSql92TableNameSyntax MysqlTableNameSyntax where
+  tableName Nothing t = MysqlTableNameSyntax $ mysqlIdentifier t
+  tableName (Just schema) t = MysqlTableNameSyntax $ mysqlIdentifier schema <> emit "." <> mysqlIdentifier t
+
 instance IsSql92FieldNameSyntax MysqlFieldNameSyntax where
     qualifiedField a b =
       MysqlFieldNameSyntax $
       mysqlIdentifier a <> emit "." <> mysqlIdentifier b
     unqualifiedField b =
       MysqlFieldNameSyntax (mysqlIdentifier b)
+
+-- | Note: MySQL does not allow timezones in date/time types
+instance IsSql92DataTypeSyntax MysqlDataTypeSyntax where
+  domainType t = MysqlDataTypeSyntax (mysqlIdentifier t) (mysqlIdentifier t)
+  charType len cs = MysqlDataTypeSyntax (emit "CHAR(" <> mysqlCharLen len <> emit ")" <> mysqlOptCharSet cs) (emit "CHAR")
+  varCharType len cs = MysqlDataTypeSyntax (emit "VARCHAR(" <> mysqlCharLen len <> emit ")" <> mysqlOptCharSet cs) (emit "CHAR")
+  nationalCharType len = MysqlDataTypeSyntax (emit "NATIONAL CHAR(" <> mysqlCharLen  len <> emit ")") (emit "CHAR")
+  nationalVarCharType len = MysqlDataTypeSyntax (emit "NATIONAL CHAR VARYING(" <> mysqlCharLen len <> emit ")") (emit "CHAR")
+  bitType len = MysqlDataTypeSyntax (emit "BIT(" <> mysqlCharLen len <> emit ")") (emit "BINARY")
+  varBitType len = MysqlDataTypeSyntax (emit "VARBINARY(" <> mysqlCharLen len <> emit ")") (emit "BINARY")
+  numericType prec = MysqlDataTypeSyntax (emit "NUMERIC" <> mysqlNumPrec prec) (emit "DECIMAL" <> mysqlNumPrec prec)
+  decimalType prec = MysqlDataTypeSyntax ty ty
+    where ty = emit "DECIMAL" <> mysqlNumPrec prec
+  intType = MysqlDataTypeSyntax (emit "INT") (emit "INTEGER")
+  smallIntType = MysqlDataTypeSyntax (emit "SMALL INT") (emit "INTEGER")
+  floatType prec = MysqlDataTypeSyntax (emit "FLOAT" <> maybe mempty (mysqlParens . emit . fromString . show) prec) (emit "DECIMAL")
+  doubleType = MysqlDataTypeSyntax (emit "DOUBLE") (emit "DECIMAL")
+  realType = MysqlDataTypeSyntax (emit "REAL") (emit "DECIMAL")
+
+  dateType = MysqlDataTypeSyntax ty ty
+    where ty = emit "DATE"
+  timeType _prec _withTimeZone = MysqlDataTypeSyntax ty ty
+    where ty = emit "TIME"
+  timestampType _prec _withTimeZone = MysqlDataTypeSyntax (emit "TIMESTAMP") (emit "DATETIME")
 
 instance IsSql92ProjectionSyntax MysqlProjectionSyntax where
     type Sql92ProjectionExpressionSyntax MysqlProjectionSyntax = MysqlExpressionSyntax
@@ -259,6 +309,16 @@ instance IsSql92ProjectionSyntax MysqlProjectionSyntax where
                              maybe mempty
                                    (\nm' -> emit " AS " <> mysqlIdentifier nm') nm)
                         exprs)
+
+instance IsCustomSqlSyntax MysqlExpressionSyntax where
+    newtype CustomSqlSyntax MysqlExpressionSyntax =
+        MysqlCustomExpressionSyntax { fromMysqlCustomExpression :: MysqlSyntax }
+        deriving (Monoid, Semigroup)
+    customExprSyntax = MysqlExpressionSyntax . fromMysqlCustomExpression
+    renderSyntax = MysqlCustomExpressionSyntax . mysqlParens . fromMysqlExpression
+
+instance IsString (CustomSqlSyntax MysqlExpressionSyntax) where
+    fromString = MysqlCustomExpressionSyntax . emit . fromString
 
 instance IsSql92ExpressionSyntax MysqlExpressionSyntax where
     type Sql92ExpressionValueSyntax MysqlExpressionSyntax = MysqlValueSyntax
@@ -319,8 +379,8 @@ instance IsSql92ExpressionSyntax MysqlExpressionSyntax where
                                           emit ")")
     extractE field from = MysqlExpressionSyntax (emit "EXTRACT(" <> fromMysqlExtractField field <>
                                                  emit " FROM (" <> fromMysqlExpression from <> emit ")")
-    castE e to = MysqlExpressionSyntax (emit "CAST(" <> fromMysqlExpression e <> emit ") AS " <>
-                                        fromMysqlDataType to <> emit ")")
+    castE e to = MysqlExpressionSyntax (emit "CAST((" <> fromMysqlExpression e <> emit ") AS " <>
+                                        fromMysqlDataTypeCast to <> emit ")")
     caseE cases else' =
         MysqlExpressionSyntax $
         emit "CASE " <>
@@ -339,6 +399,14 @@ instance IsSql92ExpressionSyntax MysqlExpressionSyntax where
     trimE x = MysqlExpressionSyntax (emit "TRIM(" <> fromMysqlExpression x <> emit ")")
     lowerE x = MysqlExpressionSyntax (emit "LOWER(" <> fromMysqlExpression x <> emit ")")
     upperE x = MysqlExpressionSyntax (emit "UPPER(" <> fromMysqlExpression x <> emit ")")
+
+instance IsSql92ExtractFieldSyntax MysqlExtractFieldSyntax where
+  secondsField = MysqlExtractFieldSyntax (emit "SECOND")
+  minutesField = MysqlExtractFieldSyntax (emit "MINUTE")
+  hourField    = MysqlExtractFieldSyntax (emit "HOUR")
+  dayField     = MysqlExtractFieldSyntax (emit "DAY")
+  monthField   = MysqlExtractFieldSyntax (emit "MONTH")
+  yearField    = MysqlExtractFieldSyntax (emit "YEAR")
 
 instance IsSql99ConcatExpressionSyntax MysqlExpressionSyntax where
     concatE [] = valueE (sqlValueSyntax ("" :: T.Text))
@@ -372,9 +440,6 @@ mysqlBinOp op a b =
     MysqlExpressionSyntax $
     emit "(" <> fromMysqlExpression a <> emit ") " <> emit op <>
     emit " (" <> fromMysqlExpression b <> emit ")"
-
-instance IsSqlExpressionSyntaxStringType MysqlExpressionSyntax String
-instance IsSqlExpressionSyntaxStringType MysqlExpressionSyntax Text
 
 instance IsSql92AggregationExpressionSyntax MysqlExpressionSyntax where
     type Sql92AggregationSetQuantifierSyntax MysqlExpressionSyntax = MysqlSetQuantifierSyntax
@@ -508,30 +573,17 @@ instance HasSqlValueSyntax MysqlValueSyntax x => HasSqlValueSyntax MysqlValueSyn
     sqlValueSyntax Nothing = sqlValueSyntax SqlNull
     sqlValueSyntax (Just x) = sqlValueSyntax x
 
--- * Equality checks
-#define HAS_MYSQL_EQUALITY_CHECK(ty)                       \
-  instance HasSqlEqualityCheck MysqlExpressionSyntax (ty); \
-  instance HasSqlQuantifiedEqualityCheck MysqlExpressionSyntax (ty);
+instance HasSqlValueSyntax MysqlValueSyntax A.Value where
+    sqlValueSyntax = MysqlValueSyntax . (\x -> emit "'" <> x <> emit "'") . escape . BL.toStrict . A.encode
 
-HAS_MYSQL_EQUALITY_CHECK(Bool)
-HAS_MYSQL_EQUALITY_CHECK(Double)
-HAS_MYSQL_EQUALITY_CHECK(Float)
-HAS_MYSQL_EQUALITY_CHECK(Int)
-HAS_MYSQL_EQUALITY_CHECK(Int8)
-HAS_MYSQL_EQUALITY_CHECK(Int16)
-HAS_MYSQL_EQUALITY_CHECK(Int32)
-HAS_MYSQL_EQUALITY_CHECK(Int64)
-HAS_MYSQL_EQUALITY_CHECK(Integer)
-HAS_MYSQL_EQUALITY_CHECK(Word)
-HAS_MYSQL_EQUALITY_CHECK(Word8)
-HAS_MYSQL_EQUALITY_CHECK(Word16)
-HAS_MYSQL_EQUALITY_CHECK(Word32)
-HAS_MYSQL_EQUALITY_CHECK(Word64)
-HAS_MYSQL_EQUALITY_CHECK(T.Text)
-HAS_MYSQL_EQUALITY_CHECK(TL.Text)
-HAS_MYSQL_EQUALITY_CHECK([Char])
-HAS_MYSQL_EQUALITY_CHECK(Scientific)
-HAS_MYSQL_EQUALITY_CHECK(Day)
-HAS_MYSQL_EQUALITY_CHECK(TimeOfDay)
-HAS_MYSQL_EQUALITY_CHECK(NominalDiffTime)
-HAS_MYSQL_EQUALITY_CHECK(LocalTime)
+mysqlCharLen :: Maybe Word -> MysqlSyntax
+mysqlCharLen = maybe (emit "MAX") (emit . fromString . show)
+
+mysqlNumPrec :: Maybe (Word, Maybe Word) -> MysqlSyntax
+mysqlNumPrec Nothing = mempty
+mysqlNumPrec (Just (d, Nothing)) = mysqlParens (emit . fromString . show $ d)
+mysqlNumPrec (Just (d, Just n)) = mysqlParens (emit (fromString (show d)) <> emit ", " <> emit (fromString (show n)))
+
+mysqlOptCharSet :: Maybe T.Text -> MysqlSyntax
+mysqlOptCharSet Nothing = mempty
+mysqlOptCharSet (Just cs) = emit " CHARACTER SET " <> mysqlIdentifier cs
