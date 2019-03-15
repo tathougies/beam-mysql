@@ -119,26 +119,44 @@ instance MonadBeam MySQL MySQLM where
                       [] -> pure Nothing
                       _ -> do
                         let FromBackendRowM go = fromBackendRow
-                        res <- runF go (\x _ _ -> pure (Right x)) step
-                                 0 (zip fieldDescs fields)
-                        case res of
+                        rowRes <- runF go (\x _ _ -> pure (Right x)) step
+                                    0 (zip fieldDescs fields)
+                        case rowRes of
                           Left err -> throwIO err
-                          Right x -> Just x
+                          Right x -> pure (Just x)
 
                 parseField :: forall field. FromField field
                            => MySQL.Field -> Maybe BS.ByteString
-                           -> IO (Either ParseError field)
+                           -> IO (Either ColumnParseError field)
                 parseField ty d = runExceptT (fromField ty d)
 
-                step :: FromBackendRowF MySQL (Int -> [(MySQL.Field, Maybe BS.ByteString)] -> IO (Either BeamRowReadError x))
-                     -> Int -> [(MySQL.Field, Maybe BS.ByteString)] -> IO (Either BeamRowReadError x)
+                step :: forall y
+                      . FromBackendRowF MySQL (Int -> [(MySQL.Field, Maybe BS.ByteString)] -> IO (Either BeamRowReadError y))
+                     -> Int -> [(MySQL.Field, Maybe BS.ByteString)] -> IO (Either BeamRowReadError y)
                 step (ParseOneField _) curCol [] =
-                    pure (Left (BeamRowReadError (Just curCol) (NotEnoughColumns curCol)))
-                step (ParseOneField next) curCol ((desc, field):fields) =
+                    pure (Left (BeamRowReadError (Just curCol) (ColumnNotEnoughColumns curCol)))
+                step (ParseOneField next) curCol fields@((desc, field):_) =
                     do d <- parseField desc field
                        case d of
-                         Left  e  -> _
+                         Left  e  -> pure (Left (BeamRowReadError (Just curCol) e))
                          Right d' -> next d' curCol fields
+
+                step (NextField {}) curCol [] =
+                    pure (Left (BeamRowReadError (Just curCol) (ColumnNotEnoughColumns curCol)))
+                step (NextField next) curCol (_:fields) =
+                    next (curCol + 1) fields
+
+                step (Alt (FromBackendRowM a) (FromBackendRowM b) next) curCol cols =
+                    do aRes <- runF a (\x curCol' cols' -> pure (Right (next x curCol' cols'))) step curCol cols
+                       case aRes of
+                         Right next' -> next'
+                         Left aErr -> do
+                           bRes <- runF b (\x curCol' cols' -> pure (Right (next x curCol' cols'))) step curCol cols
+                           case bRes of
+                             Right next' -> next'
+                             Left _ -> pure (Left aErr)
+
+                step (FailParseWith err) _ _ = pure (Left err)
 
                 MySQLM doConsume = consume fetchRow'
 

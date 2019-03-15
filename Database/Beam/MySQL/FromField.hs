@@ -6,17 +6,16 @@
 
 module Database.Beam.MySQL.FromField
     ( FieldParser
-    , ParseError(..)
-    , ParseErrorType(..)
     , FromField(..)
 
     , atto ) where
+
+import           Database.Beam.Backend.SQL.Row (ColumnParseError(..))
 
 import           Database.MySQL.Base
 import           Database.MySQL.Base.Types
 
 import           Control.Applicative
-import           Control.Exception
 import           Control.Monad.Except
 
 import qualified Data.Aeson as A (Value, eitherDecodeStrict)
@@ -38,20 +37,7 @@ import           Data.Word
 
 import           Text.Printf
 
-type FieldParser a = ExceptT ParseError IO a
-
-data ParseError
-    = ParseError
-    { _parseErrorSqlType     :: String
-    , _parseErrorHaskellType :: String
-    , _parseErrorMessage     :: String
-    , _parseErrorType        :: ParseErrorType
-    } deriving Show
-instance Exception ParseError
-
-data ParseErrorType
-    = Incompatible | UnexpectedNull | ConversionFailed
-      deriving Show
+type FieldParser a = ExceptT ColumnParseError IO a
 
 class FromField a where
     fromField :: Field -> Maybe SB.ByteString -> FieldParser a
@@ -233,14 +219,15 @@ maxLengthedDecimal = go1 0
 incompatibleTypes, unexpectedNull, conversionFailed
     :: forall a. Typeable a => Field -> String -> FieldParser a
 incompatibleTypes f msg =
-  throwError (ParseError (show (fieldType f)) (show (typeRep (Proxy :: Proxy a)))
-                         msg Incompatible)
-unexpectedNull f msg =
-  throwError (ParseError (show (fieldType f)) (show (typeRep (Proxy :: Proxy a)))
-                         msg UnexpectedNull)
+  throwError (ColumnTypeMismatch (show (typeRep (Proxy :: Proxy a)))
+                                 (show (fieldType f))
+                                 msg)
+unexpectedNull _ _ =
+  throwError ColumnUnexpectedNull
 conversionFailed f msg =
-  throwError (ParseError (show (fieldType f)) (show (typeRep (Proxy :: Proxy a)))
-                         msg ConversionFailed)
+  throwError (ColumnTypeMismatch (show (typeRep (Proxy :: Proxy a)))
+                                 (show (fieldType f))
+                                 msg)
 
 check8, check16, check32, check64, checkScientific, checkBytes, checkText
     :: Type -> Bool
