@@ -95,37 +95,27 @@ instance MonadBeam MysqlCommandSyntax MySQL Connection MySQLM where
 
                     case fields of
                       [] -> pure Nothing
-                      _ -> Just <$> runF fromBackendRow (\x _ _ -> pure x) step
-                                         0 (zip fieldDescs fields)
+                      _ -> do
+                        res <- runF fromBackendRow (\x _ _ -> pure (Right x)) step
+                                 0 (zip fieldDescs fields)
+                        case res of
+                          Left err -> throwIO err
+                          Right x -> Just x
 
                 parseField :: forall field. FromField field
                            => MySQL.Field -> Maybe BS.ByteString
                            -> IO (Either ParseError field)
                 parseField ty d = runExceptT (fromField ty d)
 
-                step :: FromBackendRowF MySQL (Int -> [(MySQL.Field, Maybe BS.ByteString)] -> IO x)
-                     -> Int -> [(MySQL.Field, Maybe BS.ByteString)] -> IO x
+                step :: FromBackendRowF MySQL (Int -> [(MySQL.Field, Maybe BS.ByteString)] -> IO (Either BeamRowReadError x))
+                     -> Int -> [(MySQL.Field, Maybe BS.ByteString)] -> IO (Either BeamRowReadError x)
                 step (ParseOneField _) curCol [] =
-                    throwIO (NotEnoughColumns (curCol + 1))
+                    pure (Left (BeamRowReadError (Just curCol) (NotEnoughColumns curCol)))
                 step (ParseOneField next) curCol ((desc, field):fields) =
                     do d <- parseField desc field
                        case d of
-                         Left  e  -> throwIO e
-                         Right d' -> next d' (curCol + 1) fields
-                step (PeekField next) curCol fields@((desc, field):_) =
-                    do d <- parseField desc field
-                       case d of
-                         Left {}  -> next Nothing curCol fields
-                         Right d' -> next (Just d') curCol fields
-                step (PeekField next) curCol [] =
-                    next Nothing curCol []
-                step (CheckNextNNull n next) curCol fields
-                    | n > length fields = next False curCol fields
-                    | otherwise =
-                        let areNull = all (isNothing . snd) (take n fields)
-                        in next areNull
-                                (if areNull then curCol + n else curCol)
-                                (if areNull then drop n fields else fields)
+                         Left  e  -> _
+                         Right d' -> next d' curCol fields
 
                 MySQLM doConsume = consume fetchRow'
 
