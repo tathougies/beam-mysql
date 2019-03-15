@@ -10,6 +10,7 @@ module Database.Beam.MySQL.FromField
 
     , atto ) where
 
+import           Database.Beam.Backend.SQL (SqlNull(..))
 import           Database.Beam.Backend.SQL.Row (ColumnParseError(..))
 
 import           Database.MySQL.Base
@@ -97,6 +98,12 @@ instance FromField (Ratio Integer) where
 instance FromField a => FromField (Maybe a) where
     fromField _ Nothing = pure Nothing
     fromField field (Just d) = Just <$> fromField field (Just d)
+
+instance FromField SqlNull where
+    fromField _ Nothing = pure SqlNull
+    fromField f _ = throwError (ColumnTypeMismatch "SqlNull"
+                                                   (show (fieldType f))
+                                                   "Non-null value found")
 
 instance FromField SB.ByteString where
     fromField = doConvert checkBytes pure

@@ -296,6 +296,7 @@ FROM_BACKEND_ROW(T.Text)
 FROM_BACKEND_ROW(TL.Text)
 FROM_BACKEND_ROW(LocalTime)
 FROM_BACKEND_ROW(A.Value)
+FROM_BACKEND_ROW(SqlNull)
 
 -- * Equality checks
 #define HAS_MYSQL_EQUALITY_CHECK(ty)                       \
