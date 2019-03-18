@@ -135,16 +135,11 @@ instance MonadBeam MySQL MySQLM where
                      -> Int -> [(MySQL.Field, Maybe BS.ByteString)] -> IO (Either BeamRowReadError y)
                 step (ParseOneField _) curCol [] =
                     pure (Left (BeamRowReadError (Just curCol) (ColumnNotEnoughColumns curCol)))
-                step (ParseOneField next) curCol fields@((desc, field):_) =
+                step (ParseOneField next) curCol ((desc, field):fields) =
                     do d <- parseField desc field
                        case d of
                          Left  e  -> pure (Left (BeamRowReadError (Just curCol) e))
-                         Right d' -> next d' curCol fields
-
-                step (NextField {}) curCol [] =
-                    pure (Left (BeamRowReadError (Just curCol) (ColumnNotEnoughColumns curCol)))
-                step (NextField next) curCol (_:fields) =
-                    next (curCol + 1) fields
+                         Right d' -> next d' (curCol + 1) fields
 
                 step (Alt (FromBackendRowM a) (FromBackendRowM b) next) curCol cols =
                     do aRes <- runF a (\x curCol' cols' -> pure (Right (next x curCol' cols'))) step curCol cols
