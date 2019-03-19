@@ -1,7 +1,9 @@
 name:                 beam-mysql
 version:              0.2.0.0
 synopsis:             Connection layer between beam and MySQL/MariaDB
-description:
+description:          Beam driver for MySQL or MariaDB databases, two popular open-source databases.
+
+                      Supports most beam features, but does not yet have support for "beam-migrate".
 homepage:             http://travis.athougies.net/projects/beam.html
 license:              MIT
 license-file:         LICENSE
@@ -9,7 +11,7 @@ author:               Travis Athougies
 maintainer:           travis@athougies.net
 category:             Database
 build-type:           Simple
-cabal-version:        >=1.18
+cabal-version:        1.18
 bug-reports:          https://github.com/tathougies/issues
 
 library
