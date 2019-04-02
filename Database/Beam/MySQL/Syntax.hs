@@ -520,6 +520,13 @@ instance HasSqlValueSyntax MysqlValueSyntax TL.Text where
 instance HasSqlValueSyntax MysqlValueSyntax [Char] where
     sqlValueSyntax = sqlValueSyntax . T.pack
 
+instance HasSqlValueSyntax MysqlValueSyntax ByteString where
+    sqlValueSyntax t =
+        MysqlValueSyntax $ MysqlSyntax
+        (\next doEscape before conn ->
+             do escaped <- doEscape t
+                next doEscape (before <> "'" <> byteString escaped <> "'") conn)
+
 instance HasSqlValueSyntax MysqlValueSyntax Scientific where
     sqlValueSyntax = MysqlValueSyntax . emit . scientificBuilder
 
